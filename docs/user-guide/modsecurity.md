@@ -7,7 +7,7 @@ The [ModSecurity-nginx](https://github.com/SpiderLabs/ModSecurity-nginx) connect
 The default modsecurity configuration file is located in `/etc/nginx/modsecurity/modsecurity.conf`. This is the only file located in this directory and contains the default recommended configuration. Using a volume we can replace this file with the desired configuration.
 To enable the modsecurity feature we need to specify `enable-modsecurity: "true"` in the configuration configmap.
 
-**NOTE:** the default configuration use detection only, because that minimises the chances of post-installation disruption.
+**NOTE:** the default configuration use detection only, because that minimizes the chances of post-installation disruption.
 The file `/var/log/modsec_audit.log` contains the log of modsecurity.
 
 
