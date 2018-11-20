@@ -66,6 +66,21 @@ func buildSimpleClientSet() *testclient.Clientset {
 				Spec: apiv1.PodSpec{
 					NodeName: "foo_node_2",
 				},
+				Status: apiv1.PodStatus{
+					Phase: apiv1.PodRunning,
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo1-unknown",
+					Namespace: apiv1.NamespaceDefault,
+				},
+				Spec: apiv1.PodSpec{
+					NodeName: "foo_node_1",
+				},
+				Status: apiv1.PodStatus{
+					Phase: apiv1.PodUnknown,
+				},
 			},
 			{
 				ObjectMeta: metav1.ObjectMeta{
@@ -86,6 +101,9 @@ func buildSimpleClientSet() *testclient.Clientset {
 				},
 				Spec: apiv1.PodSpec{
 					NodeName: "foo_node_2",
+				},
+				Status: apiv1.PodStatus{
+					Phase: apiv1.PodRunning,
 				},
 			},
 		}},
@@ -368,6 +386,25 @@ func TestRunningAddresessWithPods(t *testing.T) {
 	rv := r[0]
 	if rv != "11.0.0.2" {
 		t.Errorf("returned %v but expected %v", rv, "11.0.0.2")
+	}
+}
+
+func TestRunningAddresessWithPublishStatusAddress(t *testing.T) {
+	fk := buildStatusSync()
+	fk.PublishService = ""
+	fk.PublishStatusAddress = "127.0.0.1"
+
+	r, _ := fk.runningAddresses()
+	if r == nil {
+		t.Fatalf("returned nil but expected valid []string")
+	}
+	rl := len(r)
+	if len(r) != 1 {
+		t.Errorf("returned %v but expected %v", rl, 1)
+	}
+	rv := r[0]
+	if rv != "127.0.0.1" {
+		t.Errorf("returned %v but expected %v", rv, "127.0.0.1")
 	}
 }
 

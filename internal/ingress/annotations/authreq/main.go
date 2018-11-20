@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/golang/glog"
+
 	extensions "k8s.io/api/extensions/v1beta1"
 
 	"k8s.io/ingress-nginx/internal/ingress/annotations/parser"
@@ -35,8 +37,9 @@ type Config struct {
 	Host            string   `json:"host"`
 	SigninURL       string   `json:"signinUrl"`
 	Method          string   `json:"method"`
-	ResponseHeaders []string `json:"responseHeaders,omitEmpty"`
+	ResponseHeaders []string `json:"responseHeaders,omitempty"`
 	RequestRedirect string   `json:"requestRedirect"`
+	AuthSnippet     string   `json:"authSnippet"`
 }
 
 // Equal tests for equality between two Config types
@@ -72,6 +75,9 @@ func (e1 *Config) Equal(e2 *Config) bool {
 		}
 	}
 	if e1.RequestRedirect != e2.RequestRedirect {
+		return false
+	}
+	if e1.AuthSnippet != e2.AuthSnippet {
 		return false
 	}
 
@@ -121,17 +127,17 @@ func (a authReq) Parse(ing *extensions.Ingress) (interface{}, error) {
 		return nil, ing_errors.NewLocationDenied("an empty string is not a valid URL")
 	}
 
-	authUrl, err := url.Parse(urlString)
+	authURL, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
 	}
-	if authUrl.Scheme == "" {
+	if authURL.Scheme == "" {
 		return nil, ing_errors.NewLocationDenied("url scheme is empty")
 	}
-	if authUrl.Host == "" {
+	if authURL.Host == "" {
 		return nil, ing_errors.NewLocationDenied("url host is empty")
 	}
-	if strings.Contains(authUrl.Host, "..") {
+	if strings.Contains(authURL.Host, "..") {
 		return nil, ing_errors.NewLocationDenied("invalid url host")
 	}
 
@@ -141,7 +147,15 @@ func (a authReq) Parse(ing *extensions.Ingress) (interface{}, error) {
 	}
 
 	// Optional Parameters
-	signIn, _ := parser.GetStringAnnotation("auth-signin", ing)
+	signIn, err := parser.GetStringAnnotation("auth-signin", ing)
+	if err != nil {
+		glog.Warning("auth-signin annotation is undefined and will not be set")
+	}
+
+	authSnippet, err := parser.GetStringAnnotation("auth-snippet", ing)
+	if err != nil {
+		glog.Warning("auth-snippet annotation is undefined and will not be set")
+	}
 
 	responseHeaders := []string{}
 	hstr, _ := parser.GetStringAnnotation("auth-response-headers", ing)
@@ -162,10 +176,11 @@ func (a authReq) Parse(ing *extensions.Ingress) (interface{}, error) {
 
 	return &Config{
 		URL:             urlString,
-		Host:            authUrl.Hostname(),
+		Host:            authURL.Hostname(),
 		SigninURL:       signIn,
 		Method:          authMethod,
 		ResponseHeaders: responseHeaders,
 		RequestRedirect: requestRedirect,
+		AuthSnippet:     authSnippet,
 	}, nil
 }

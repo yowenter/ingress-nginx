@@ -21,10 +21,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ncabatoff/process-exporter/proc"
 	"github.com/pkg/errors"
 )
+
+const nginxPID = "/tmp/nginx.pid"
 
 // Name returns the healthcheck name
 func (n NGINXController) Name() string {
@@ -33,13 +36,26 @@ func (n NGINXController) Name() string {
 
 // Check returns if the nginx healthz endpoint is returning ok (status code 200)
 func (n *NGINXController) Check(_ *http.Request) error {
-	res, err := http.Get(fmt.Sprintf("http://0.0.0.0:%v%v", n.cfg.ListenPorts.Status, ngxHealthPath))
+
+	url := fmt.Sprintf("http://127.0.0.1:%v%v", n.cfg.ListenPorts.Status, ngxHealthPath)
+	timeout := n.cfg.HealthCheckTimeout
+	statusCode, err := simpleGet(url, timeout)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
+
+	if statusCode != 200 {
 		return fmt.Errorf("ingress controller is not healthy")
+	}
+
+	url = fmt.Sprintf("http://127.0.0.1:%v/is-dynamic-lb-initialized", n.cfg.ListenPorts.Status)
+	statusCode, err = simpleGet(url, timeout)
+	if err != nil {
+		return err
+	}
+
+	if statusCode != 200 {
+		return fmt.Errorf("dynamic load balancer not started")
 	}
 
 	// check the nginx master process is running
@@ -47,15 +63,35 @@ func (n *NGINXController) Check(_ *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "unexpected error reading /proc directory")
 	}
-	f, err := n.fileSystem.ReadFile("/run/nginx.pid")
+	f, err := n.fileSystem.ReadFile(nginxPID)
 	if err != nil {
-		return errors.Wrap(err, "unexpected error reading /run/nginx.pid")
+		return errors.Wrapf(err, "unexpected error reading %v", nginxPID)
 	}
 	pid, err := strconv.Atoi(strings.TrimRight(string(f), "\r\n"))
 	if err != nil {
-		return errors.Wrap(err, "unexpected error reading the PID from /run/nginx.pid")
+		return errors.Wrapf(err, "unexpected error reading the nginx PID from %v", nginxPID)
 	}
 	_, err = fs.NewProc(pid)
 
 	return err
+}
+
+func simpleGet(url string, timeout time.Duration) (int, error) {
+	client := &http.Client{
+		Timeout:   timeout * time.Second,
+		Transport: &http.Transport{DisableKeepAlives: true},
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return -1, err
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer res.Body.Close()
+
+	return res.StatusCode, nil
 }

@@ -7,9 +7,6 @@ aliases:
     - thockin
   ingress-nginx-admins:
     - bowei
-    - bprashanth
-  ingress-nginx-maintainers:
-    - justinsb
     - aledbf
-    - nicksardo
-    - bprashanth
+  ingress-nginx-maintainers:
+    - aledbf

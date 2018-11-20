@@ -38,6 +38,8 @@ type Config struct {
 	ForceSSLRedirect bool `json:"forceSSLRedirect"`
 	// AppRoot defines the Application Root that the Controller must redirect if it's in '/' context
 	AppRoot string `json:"appRoot"`
+	// UseRegex indicates whether or not the locations use regex paths
+	UseRegex bool `json:"useRegex"`
 }
 
 // Equal tests for equality between two Redirect types
@@ -66,6 +68,9 @@ func (r1 *Config) Equal(r2 *Config) bool {
 	if r1.AppRoot != r2.AppRoot {
 		return false
 	}
+	if r1.UseRegex != r2.UseRegex {
+		return false
+	}
 
 	return true
 }
@@ -74,7 +79,7 @@ type rewrite struct {
 	r resolver.Resolver
 }
 
-// NewParser creates a new reqrite annotation parser
+// NewParser creates a new rewrite annotation parser
 func NewParser(r resolver.Resolver) parser.IngressAnnotation {
 	return rewrite{r}
 }
@@ -94,6 +99,7 @@ func (a rewrite) Parse(ing *extensions.Ingress) (interface{}, error) {
 	abu, _ := parser.GetBoolAnnotation("add-base-url", ing)
 	bus, _ := parser.GetStringAnnotation("base-url-scheme", ing)
 	ar, _ := parser.GetStringAnnotation("app-root", ing)
+	ur, _ := parser.GetBoolAnnotation("use-regex", ing)
 
 	return &Config{
 		Target:           rt,
@@ -102,5 +108,6 @@ func (a rewrite) Parse(ing *extensions.Ingress) (interface{}, error) {
 		SSLRedirect:      sslRe,
 		ForceSSLRedirect: fSslRe,
 		AppRoot:          ar,
+		UseRegex:         ur,
 	}, nil
 }

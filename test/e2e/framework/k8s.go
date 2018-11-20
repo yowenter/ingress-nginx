@@ -17,7 +17,10 @@ limitations under the License.
 package framework
 
 import (
+	"fmt"
 	"time"
+
+	. "github.com/onsi/gomega"
 
 	api "k8s.io/api/core/v1"
 	core "k8s.io/api/core/v1"
@@ -25,41 +28,85 @@ import (
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 )
 
-func (f *Framework) EnsureSecret(secret *api.Secret) (*api.Secret, error) {
+// EnsureSecret creates a Secret object or returns it if it already exists.
+func (f *Framework) EnsureSecret(secret *api.Secret) *api.Secret {
 	s, err := f.KubeClientSet.CoreV1().Secrets(secret.Namespace).Create(secret)
 	if err != nil {
 		if k8sErrors.IsAlreadyExists(err) {
-			return f.KubeClientSet.CoreV1().Secrets(secret.Namespace).Update(secret)
+			s, err := f.KubeClientSet.CoreV1().Secrets(secret.Namespace).Update(secret)
+			Expect(err).NotTo(HaveOccurred(), "unexpected error updating secret")
+
+			return s
+		}
+
+		Expect(err).NotTo(HaveOccurred(), "unexpected error creating secret")
+	}
+
+	Expect(s).NotTo(BeNil())
+	Expect(s.ObjectMeta).NotTo(BeNil())
+
+	return s
+}
+
+// EnsureConfigMap creates a ConfigMap object or returns it if it already exists.
+func (f *Framework) EnsureConfigMap(configMap *api.ConfigMap) (*api.ConfigMap, error) {
+	cm, err := f.KubeClientSet.CoreV1().ConfigMaps(configMap.Namespace).Create(configMap)
+	if err != nil {
+		if k8sErrors.IsAlreadyExists(err) {
+			return f.KubeClientSet.CoreV1().ConfigMaps(configMap.Namespace).Update(configMap)
 		}
 		return nil, err
 	}
-	return s, nil
+
+	return cm, nil
 }
 
-func (f *Framework) EnsureIngress(ingress *extensions.Ingress) (*extensions.Ingress, error) {
-	s, err := f.KubeClientSet.ExtensionsV1beta1().Ingresses(ingress.Namespace).Update(ingress)
+// EnsureIngress creates an Ingress object or returns it if it already exists.
+func (f *Framework) EnsureIngress(ingress *extensions.Ingress) *extensions.Ingress {
+	ing, err := f.KubeClientSet.ExtensionsV1beta1().Ingresses(ingress.Namespace).Update(ingress)
 	if err != nil {
 		if k8sErrors.IsNotFound(err) {
-			return f.KubeClientSet.ExtensionsV1beta1().Ingresses(ingress.Namespace).Create(ingress)
+			ing, err = f.KubeClientSet.ExtensionsV1beta1().Ingresses(ingress.Namespace).Create(ingress)
+			Expect(err).NotTo(HaveOccurred(), "unexpected error creating ingress")
+			return ing
 		}
-		return nil, err
+
+		Expect(err).NotTo(HaveOccurred())
 	}
-	return s, nil
+
+	Expect(ing).NotTo(BeNil())
+
+	if ing.Annotations == nil {
+		ing.Annotations = make(map[string]string)
+	}
+
+	return ing
 }
 
-func (f *Framework) EnsureService(service *core.Service) (*core.Service, error) {
+// EnsureService creates a Service object or returns it if it already exists.
+func (f *Framework) EnsureService(service *core.Service) *core.Service {
 	s, err := f.KubeClientSet.CoreV1().Services(service.Namespace).Update(service)
 	if err != nil {
 		if k8sErrors.IsNotFound(err) {
-			return f.KubeClientSet.CoreV1().Services(service.Namespace).Create(service)
+			s, err := f.KubeClientSet.CoreV1().Services(service.Namespace).Create(service)
+			Expect(err).NotTo(HaveOccurred(), "unexpected error creating service")
+			return s
+
 		}
-		return nil, err
+
+		Expect(err).NotTo(HaveOccurred())
 	}
-	return s, nil
+
+	Expect(s).NotTo(BeNil(), "expected a service but none returned")
+
+	return s
 }
 
+// EnsureDeployment creates a Deployment object or returns it if it already exists.
 func (f *Framework) EnsureDeployment(deployment *extensions.Deployment) (*extensions.Deployment, error) {
 	d, err := f.KubeClientSet.Extensions().Deployments(deployment.Namespace).Update(deployment)
 	if err != nil {
@@ -71,19 +118,19 @@ func (f *Framework) EnsureDeployment(deployment *extensions.Deployment) (*extens
 	return d, nil
 }
 
-func (f *Framework) WaitForPodsReady(timeout time.Duration, expectedReplicas int, opts metav1.ListOptions) error {
-	return wait.Poll(time.Second, timeout, func() (bool, error) {
-		pl, err := f.KubeClientSet.CoreV1().Pods(f.Namespace.Name).List(opts)
+// WaitForPodsReady waits for a given amount of time until a group of Pods is running in the given namespace.
+func WaitForPodsReady(kubeClientSet kubernetes.Interface, timeout time.Duration, expectedReplicas int, namespace string, opts metav1.ListOptions) error {
+	return wait.Poll(2*time.Second, timeout, func() (bool, error) {
+		pl, err := kubeClientSet.CoreV1().Pods(namespace).List(opts)
 		if err != nil {
 			return false, err
 		}
 
 		r := 0
 		for _, p := range pl.Items {
-			if p.Status.Phase != core.PodRunning {
-				continue
+			if isRunning, _ := podRunningReady(&p); isRunning {
+				r++
 			}
-			r++
 		}
 
 		if r == expectedReplicas {
@@ -92,4 +139,20 @@ func (f *Framework) WaitForPodsReady(timeout time.Duration, expectedReplicas int
 
 		return false, nil
 	})
+}
+
+// podRunningReady checks whether pod p's phase is running and it has a ready
+// condition of status true.
+func podRunningReady(p *core.Pod) (bool, error) {
+	// Check the phase is running.
+	if p.Status.Phase != core.PodRunning {
+		return false, fmt.Errorf("want pod '%s' on '%s' to be '%v' but was '%v'",
+			p.ObjectMeta.Name, p.Spec.NodeName, core.PodRunning, p.Status.Phase)
+	}
+	// Check the ready condition is true.
+	if !podutil.IsPodReady(p) {
+		return false, fmt.Errorf("pod '%s' on '%s' didn't have condition {%v %v}; conditions: %v",
+			p.ObjectMeta.Name, p.Spec.NodeName, core.PodReady, core.ConditionTrue, p.Status.Conditions)
+	}
+	return true, nil
 }
