@@ -18,6 +18,26 @@ function _M.get_nodes(endpoints)
   return nodes
 end
 
+
+local function tdump(o)
+  if type(o) == 'table' then
+     local s = '{ '
+     for k,v in pairs(o) do
+        if type(k) ~= 'number' then k = '"'..k..'"' end
+        s = s .. ''..k..' : ' .. tdump(v) .. ','
+     end
+     return s .. '} '
+  else
+     return tostring(o)
+  end
+end
+
+function _M.tdump(o)
+  return tdump(o)
+end
+
+
+
 local function hash_digest(hash_factory, message)
   local hash = hash_factory:new()
   if not hash then
@@ -98,6 +118,13 @@ local function deepcopy(orig)
   return copy
 end
 _M.deepcopy = deepcopy
+
+-- replaces special character value a with value b for all occurences in a string
+local function replace_special_char(str, a, b)
+  return string.gsub(str, "%" .. a, b)
+end
+_M.replace_special_char = replace_special_char
+
 
 local function tablelength(T)
   local count = 0

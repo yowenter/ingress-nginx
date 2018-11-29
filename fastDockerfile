@@ -1,0 +1,4 @@
+FROM quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.20.0-vim
+ADD ./bin/amd64/nginx-ingress-controller  /nginx-ingress-controller 
+ADD ./rootfs/etc/nginx /etc/nginx
+

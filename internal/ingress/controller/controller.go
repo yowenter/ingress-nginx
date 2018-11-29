@@ -122,6 +122,7 @@ func (n *NGINXController) syncIngress(interface{}) error {
 
 	// sort Ingresses using the ResourceVersion field
 	ings := n.store.ListIngresses()
+	ingsWithAnnotations := n.store.ListIngressesWithAnnoations()
 	sort.SliceStable(ings, func(i, j int) bool {
 		ir := ings[i].ResourceVersion
 		jr := ings[j].ResourceVersion
@@ -131,6 +132,7 @@ func (n *NGINXController) syncIngress(interface{}) error {
 	upstreams, servers := n.getBackendServers(ings)
 	var passUpstreams []*ingress.SSLPassthroughBackend
 
+	abpolicies := n.getABPolicies(ingsWithAnnotations)
 	hosts := sets.NewString()
 
 	for _, server := range servers {
@@ -159,6 +161,7 @@ func (n *NGINXController) syncIngress(interface{}) error {
 
 	pcfg := &ingress.Configuration{
 		Backends:              upstreams,
+		ABPolicies:            abpolicies,
 		Servers:               servers,
 		TCPEndpoints:          n.getStreamServices(n.cfg.TCPConfigMapName, apiv1.ProtocolTCP),
 		UDPEndpoints:          n.getStreamServices(n.cfg.UDPConfigMapName, apiv1.ProtocolUDP),
@@ -213,6 +216,12 @@ func (n *NGINXController) syncIngress(interface{}) error {
 			} else {
 				glog.Warningf("Dynamic reconfiguration failed: %v", err)
 			}
+
+			err = configureABPolicies(pcfg, n.cfg.ListenPorts.Status)
+			if err != nil {
+				glog.Errorf("Configure AB traffic policy failure %v", err)
+			}
+
 		}(isFirstSync)
 	}
 
@@ -384,6 +393,60 @@ func (n *NGINXController) getDefaultUpstream() *ingress.Backend {
 	upstream.Service = svc
 	upstream.Endpoints = append(upstream.Endpoints, endps...)
 	return upstream
+}
+
+func (n *NGINXController) getABPolicies(ingresses []*ingress.Ingress) []*ingress.ABPolicy {
+
+	var abpolicies []*ingress.ABPolicy
+	for _, ing := range ingresses {
+		abpolicyAnns := ing.ParsedAnnotations.ABPolicy
+		if !abpolicyAnns.Enabled {
+			continue
+		}
+		policy := ingress.ABPolicy{
+			Host:   abpolicyAnns.Host,
+			Path:   abpolicyAnns.Path,
+			Type:   abpolicyAnns.Type,
+			Header: abpolicyAnns.Header,
+		}
+		var upstreams []ingress.ABUpstream
+
+		for _, backend := range abpolicyAnns.Backends {
+			upstreamName := findUpstreamNameByServiceName(backend.Name, abpolicyAnns.Host, abpolicyAnns.Path, ingresses)
+			if len(upstreamName) == 0 {
+				glog.Warningf("Unable to match service upstream name for backend: `%v` ", backend)
+				continue
+			}
+			upstreams = append(upstreams, ingress.ABUpstream{
+				Upstream: upstreamName,
+				Header:   backend.Header,
+			})
+		}
+		policy.Upstreams = upstreams
+		abpolicies = append(abpolicies, &policy)
+	}
+
+	return abpolicies
+}
+
+func findUpstreamNameByServiceName(name string, host string, path string, ingresses []*ingress.Ingress) string {
+	var upstreamName string
+	for _, ingress := range ingresses {
+
+		rules := ingress.ExtIngress.Spec.Rules
+		for _, rule := range rules {
+			if rule.Host == host {
+				for _, pa := range rule.HTTP.Paths {
+					if pa.Path == path && pa.Backend.ServiceName == name {
+						upstreamName = fmt.Sprintf("%v-%v-%v", ingress.ExtIngress.Namespace, pa.Backend.ServiceName, pa.Backend.ServicePort.String())
+						return upstreamName
+					}
+				}
+			}
+		}
+
+	}
+	return upstreamName
 }
 
 // getBackendServers returns a list of Upstream and Server to be used by the

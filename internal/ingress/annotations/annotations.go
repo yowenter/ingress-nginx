@@ -19,6 +19,7 @@ package annotations
 import (
 	"github.com/golang/glog"
 	"github.com/imdario/mergo"
+	"k8s.io/ingress-nginx/internal/ingress/annotations/abpolicy"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/sslcipher"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -68,6 +69,7 @@ type Ingress struct {
 	metav1.ObjectMeta
 	BackendProtocol      string
 	Alias                string
+	ABPolicy             abpolicy.Config
 	BasicDigestAuth      auth.Config
 	CertificateAuth      authtls.Config
 	ClientBodyBufferSize string
@@ -110,6 +112,7 @@ func NewAnnotationExtractor(cfg resolver.Resolver) Extractor {
 	return Extractor{
 		map[string]parser.IngressAnnotation{
 			"Alias":                alias.NewParser(cfg),
+			"ABPolicy":             abpolicy.NewParser(cfg),
 			"BasicDigestAuth":      auth.NewParser(auth.AuthDirectory, cfg),
 			"CertificateAuth":      authtls.NewParser(cfg),
 			"ClientBodyBufferSize": clientbodybuffersize.NewParser(cfg),

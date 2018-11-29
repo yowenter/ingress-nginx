@@ -74,6 +74,8 @@ type Storer interface {
 	GetIngress(key string) (*extensions.Ingress, error)
 
 	// ListIngresses returns a list of all Ingresses in the store.
+	ListIngressesWithAnnoations() []*ingress.Ingress
+
 	ListIngresses() []*extensions.Ingress
 
 	// GetIngressAnnotations returns the parsed annotations of an Ingress matching key.
@@ -671,14 +673,54 @@ func (s k8sStore) ListIngresses() []*extensions.Ingress {
 	return ingresses
 }
 
+// ListIngresses returns the list of Ingresses
+func (s k8sStore) ListIngressesWithAnnoations() []*ingress.Ingress {
+	// filter ingress rules
+	var ingresses []*ingress.Ingress
+	for _, item := range s.listers.Ingress.List() {
+		ing := item.(*extensions.Ingress)
+		if !class.IsValid(ing) {
+			continue
+		}
+		ingKey := k8s.MetaNamespaceKey(ing)
+		anns, err := s.getIngressAnnotations(ingKey)
+		if err != nil {
+			glog.Errorf("Error getting Ingress annotations %q: %v", ingKey, err)
+
+		}
+
+		for ri, rule := range ing.Spec.Rules {
+			if rule.HTTP == nil {
+				continue
+			}
+
+			for pi, path := range rule.HTTP.Paths {
+				if path.Path == "" {
+					ing.Spec.Rules[ri].HTTP.Paths[pi].Path = "/"
+				}
+			}
+		}
+
+		ingresses = append(ingresses, &ingress.Ingress{
+			ExtIngress:        *ing,
+			ParsedAnnotations: anns,
+		})
+	}
+
+	return ingresses
+}
+
 // GetIngressAnnotations returns the parsed annotations of an Ingress matching key.
-func (s k8sStore) GetIngressAnnotations(key string) (*annotations.Ingress, error) {
+func (s k8sStore) getIngressAnnotations(key string) (*annotations.Ingress, error) {
 	ia, err := s.listers.IngressAnnotation.ByKey(key)
 	if err != nil {
 		return &annotations.Ingress{}, err
 	}
-
 	return ia, nil
+}
+
+func (s k8sStore) GetIngressAnnotations(key string) (*annotations.Ingress, error) {
+	return s.getIngressAnnotations(key)
 }
 
 // GetLocalSSLCert returns the local copy of a SSLCert

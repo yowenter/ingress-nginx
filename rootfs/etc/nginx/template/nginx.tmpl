@@ -71,6 +71,13 @@ http {
           configuration.nameservers = { {{ buildResolversForLua $cfg.Resolver $cfg.DisableIpv6DNS }} }
         end
 
+        ok, res = pcall(require, "ab_configuration")
+        if not ok then
+          error("require failed: ".. tostring(res))
+        else
+          ab_configuration = res
+        end
+
         ok, res = pcall(require, "balancer")
         if not ok then
           error("require failed: " .. tostring(res))
@@ -78,6 +85,13 @@ http {
           balancer = res
         end
         {{ end }}
+
+        ok, res = pcall(require, "diversion")
+        if not ok then
+          error("require failed: " .. tostring(res))
+        else
+          diversion = res
+        end
 
         ok, res = pcall(require, "monitor")
         if not ok then
@@ -649,6 +663,30 @@ http {
             stub_status on;
         }
         {{ if $all.DynamicConfigurationEnabled }}
+
+        location = /configuration/policies {
+        # full match path
+
+            access_log off;
+            {{ if $cfg.EnableOpentracing }}
+            opentracing off;
+            {{ end }}
+
+            allow 127.0.0.1;
+            {{ if $IsIPV6Enabled }}
+            allow ::1;
+            {{ end }}
+            deny all;
+
+            # this should be equals to configuration_data dict
+            client_max_body_size                    10m;
+            proxy_buffering                         off;
+
+            content_by_lua_block {
+              ab_configuration.call()
+            }
+        }
+
         location /configuration {
             access_log off;
             {{ if $cfg.EnableOpentracing }}
@@ -980,6 +1018,7 @@ stream {
             rewrite_by_lua_block {
                 {{ if $all.DynamicConfigurationEnabled}}
                 balancer.rewrite()
+                diversion.rewrite()
                 {{ end }}
             }
             {{ if shouldConfigureLuaRestyWAF $all.Cfg.DisableLuaRestyWAF $location.LuaRestyWAF.Mode }}

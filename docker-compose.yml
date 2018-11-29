@@ -1,0 +1,13 @@
+version: "2"
+services:
+  ingress-controller:
+    image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.20.0-fast
+    volumes:
+    - .kube:/kube
+    # - .bin/amd64/:/amd64/
+    environment:
+    - POD_NAME=ing-2048-s1-2048-5f59b85fdd-v9bcn
+    - POD_NAMESPACE=default
+    ports:
+    - 8090:80
+    command: ["/nginx-ingress-controller", "--kubeconfig","/kube/config","--configmap", "default/atest", "--v","4"]

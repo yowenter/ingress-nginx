@@ -12,6 +12,9 @@ function _M.get_backends_data()
   return configuration_data:get("backends")
 end
 
+
+
+
 local function fetch_request_body()
   ngx.req.read_body()
   local body = ngx.req.get_body_data()
@@ -35,6 +38,9 @@ end
 function _M.get_pem_cert_key(hostname)
   return certificate_data:get(hostname)
 end
+
+_M.fetch_request_body = fetch_request_body
+
 
 local function handle_servers()
   if ngx.var.request_method ~= "POST" then

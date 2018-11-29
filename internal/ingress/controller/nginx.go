@@ -805,6 +805,37 @@ func configureDynamically(pcfg *ingress.Configuration, port int, isDynamicCertif
 	return nil
 }
 
+func configureABPolicies(pcfg *ingress.Configuration, port int) error {
+	policies := make([]*ingress.ABPolicy, len(pcfg.ABPolicies))
+
+	for i, policy := range pcfg.ABPolicies {
+		luaPolicy := &ingress.ABPolicy{
+			Host:   policy.Host,
+			Path:   policy.Path,
+			Type:   policy.Type,
+			Header: policy.Header,
+		}
+		var upstreams []ingress.ABUpstream
+
+		for _, stream := range policy.Upstreams {
+			upstreams = append(upstreams, ingress.ABUpstream{
+				Upstream: stream.Upstream,
+				Header:   stream.Header,
+			})
+		}
+
+		luaPolicy.Upstreams = upstreams
+		policies[i] = luaPolicy
+	}
+
+	url := fmt.Sprintf("http://localhost:%d/configuration/policies", port)
+	err := post(url, policies)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // configureCertificates JSON encodes certificates and POSTs it to an internal HTTP endpoint
 // that is handled by Lua
 func configureCertificates(pcfg *ingress.Configuration, port int) error {

@@ -20,6 +20,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	extensions "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/ingress-nginx/internal/ingress/annotations"
 
 	"k8s.io/ingress-nginx/internal/ingress/annotations/auth"
 	"k8s.io/ingress-nginx/internal/ingress/annotations/authreq"
@@ -69,6 +70,8 @@ type Configuration struct {
 
 	// ConfigurationChecksum contains the particular checksum of a Configuration object
 	ConfigurationChecksum string `json:"configurationChecksum,omitempty"`
+
+	ABPolicies []*ABPolicy `json:"abpolicies, omitempty"`
 }
 
 // Backend describes one or more remote server/s (endpoints) associated with a service
@@ -96,6 +99,23 @@ type Backend struct {
 	UpstreamHashBy string `json:"upstream-hash-by,omitempty"`
 	// LB algorithm configuration per ingress
 	LoadBalancing string `json:"load-balance,omitempty"`
+}
+
+// ABUpstream for traffic shaping
+type ABUpstream struct {
+	Upstream string `json:"upstream"`
+	Header   string `json:"header,omitempty"`
+	// Iprange []Iprange
+	// UidSuffix string ..
+}
+
+//ABPolicy traffic shaping policy
+type ABPolicy struct {
+	Host      string       `json:"host"`
+	Path      string       `json:"path"`
+	Type      string       `json:"type"`
+	Header    string       `json:"header"`
+	Upstreams []ABUpstream `json:"upstreams,omitempty"`
 }
 
 // HashInclude defines if a field should be used or not to calculate the hash
@@ -312,4 +332,10 @@ type L4Backend struct {
 type ProxyProtocol struct {
 	Decode bool `json:"decode"`
 	Encode bool `json:"encode"`
+}
+
+// Ingress holds the definition of an Ingress plus its annotations
+type Ingress struct {
+	ExtIngress        extensions.Ingress
+	ParsedAnnotations *annotations.Ingress
 }
