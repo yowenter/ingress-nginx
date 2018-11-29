@@ -34,7 +34,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 
-	extensions "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/ingress-nginx/internal/file"
 	"k8s.io/ingress-nginx/internal/ingress"
@@ -126,7 +125,6 @@ var (
 		"buildLocation":              buildLocation,
 		"buildAuthLocation":          buildAuthLocation,
 		"buildAuthResponseHeaders":   buildAuthResponseHeaders,
-		"buildLoadBalancingConfig":   buildLoadBalancingConfig,
 		"buildProxyPass":             buildProxyPass,
 		"filterRateLimits":           filterRateLimits,
 		"buildRateLimitZones":        buildRateLimitZones,
@@ -404,31 +402,6 @@ func buildLogFormatUpstream(input interface{}) string {
 	}
 
 	return cfg.BuildLogFormatUpstream()
-}
-
-func buildLoadBalancingConfig(b interface{}, fallbackLoadBalancing string) string {
-	backend, ok := b.(*ingress.Backend)
-	if !ok {
-		glog.Errorf("expected an '*ingress.Backend' type but %T was returned", b)
-		return ""
-	}
-
-	if backend.UpstreamHashBy != "" {
-		return fmt.Sprintf("hash %s consistent;", backend.UpstreamHashBy)
-	}
-
-	if backend.LoadBalancing != "" {
-		if backend.LoadBalancing == "round_robin" {
-			return ""
-		}
-		return fmt.Sprintf("%s;", backend.LoadBalancing)
-	}
-
-	if fallbackLoadBalancing == "round_robin" || fallbackLoadBalancing == "" {
-		return ""
-	}
-
-	return fmt.Sprintf("%s;", fallbackLoadBalancing)
 }
 
 // buildProxyPass produces the proxy pass string, if the ingress has redirects
@@ -761,7 +734,7 @@ func isValidByteSize(input interface{}) bool {
 	}
 
 	if s == "" {
-		glog.Errorf("empty byte size, hence it will not be set.")
+		glog.V(2).Info("empty byte size, hence it will not be set")
 		return false
 	}
 
@@ -796,9 +769,9 @@ type ingressInformation struct {
 }
 
 func getIngressInformation(i, p interface{}) *ingressInformation {
-	ing, ok := i.(*extensions.Ingress)
+	ing, ok := i.(*ingress.Ingress)
 	if !ok {
-		glog.Errorf("expected an '*extensions.Ingress' type but %T was returned", i)
+		glog.Errorf("expected an '*ingress.Ingress' type but %T was returned", i)
 		return &ingressInformation{}
 	}
 
